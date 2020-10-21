@@ -13,63 +13,67 @@ public with sharing class SalesforceJourneyData {
         }
 
         // Callout to SFMC to get the list of all journeys a user is in
-        HttpRequest req = new HttpRequest();
-        req.setEndpoint('callout:Salesforce_Marketing_Cloud/interaction/v1/interactions/contactMembership');
-        req.setMethod('POST');
-        req.setHeader('Content-Type', 'application/json');
-        JSONGenerator requestJson = JSON.createGenerator(true);
-        requestJson.writeStartObject();
-        requestJson.writeFieldName('ContactKeyList');
-        requestJson.writeStartArray();
-        requestJson.writeString(userId);
-        requestJson.writeEndArray();
-        requestJson.writeEndObject();
-        String requestBody = requestJson.getAsString();
-        req.setBody(requestBody);
-        Http http = new Http();
-        HTTPResponse res = http.send(req);
-        //check if the request failed
-        if (checkResponseStatus(res.getStatusCode()) == false) {
-            return '';
-        }
-        //Received a successful response
-        
-        JSONParser parser = JSON.createParser(res.getBody());
-        
-        JSONGenerator resultJson = JSON.createGenerator(true);
-        
-        resultJson.writeStartArray(); // [
-        //parse the JSON response to get the values in Contact Membership
-        while (parser.nextToken() != null) {
-            if ((parser.getCurrentToken() == JSONToken.FIELD_NAME) && (parser.getText() == 'contactMemberships')) {
-                parser.nextToken();
-                if (parser.getCurrentToken() == JSONToken.START_ARRAY) {
-         			String name = '';
-                    String key = '';
-                    Integer version = 0;
-                    while ((parser.nextToken() != null) && (parser.getCurrentToken() != JSONToken.END_ARRAY)) {
-                        if ((parser.getCurrentToken() == JSONToken.FIELD_NAME) && (parser.getText() == 'definitionKey')) {
-                            parser.nextToken();
-                            resultJson.writeStartObject(); // {
-                            key = parser.getText();
-                            resultJson.writeStringField('key', key);
-                            name = getJourneyName(parser.getText());
-                            resultJson.writeStringField('name', name);
-                        }
-                        if ((parser.getCurrentToken() == JSONToken.FIELD_NAME) && (parser.getText() == 'version')) {
-                            parser.nextToken();
-                            version = parser.getIntegerValue();
-                            resultJson.writeNumberField('version', version);
-                            resultJson.writeBooleanField('exitingFromJourney', getExitStatus(key, userId, version));
-                            resultJson.writeEndObject(); // }
+        NamedCredential[] credentials = [SELECT Id, DeveloperName FROM NamedCredential WHERE DeveloperName LIKE 'Salesforce_Marketing_Cloud%'];
+        for (NamedCredential credential : credentials) {
+            HttpRequest req = new HttpRequest();
+            req.setEndpoint('callout:' + credential.DeveloperName + '/interaction/v1/interactions/contactMembership');
+            req.setMethod('POST');
+            req.setHeader('Content-Type', 'application/json');
+            JSONGenerator requestJson = JSON.createGenerator(true);
+            requestJson.writeStartObject();
+            requestJson.writeFieldName('ContactKeyList');
+            requestJson.writeStartArray();
+            requestJson.writeString(userId);
+            requestJson.writeEndArray();
+            requestJson.writeEndObject();
+            String requestBody = requestJson.getAsString();
+            req.setBody(requestBody);
+            Http http = new Http();
+            HTTPResponse res = http.send(req);
+            //check if the request failed
+            if (checkResponseStatus(res.getStatusCode()) == false) {
+                return '';
+            }
+            //Received a successful response
+            
+            JSONParser parser = JSON.createParser(res.getBody());
+            
+            JSONGenerator resultJson = JSON.createGenerator(true);
+            
+            resultJson.writeStartArray(); // [
+            //parse the JSON response to get the values in Contact Membership
+            while (parser.nextToken() != null) {
+                if ((parser.getCurrentToken() == JSONToken.FIELD_NAME) && (parser.getText() == 'contactMemberships')) {
+                    parser.nextToken();
+                    if (parser.getCurrentToken() == JSONToken.START_ARRAY) {
+                         String name = '';
+                        String key = '';
+                        Integer version = 0;
+                        while ((parser.nextToken() != null) && (parser.getCurrentToken() != JSONToken.END_ARRAY)) {
+                            if ((parser.getCurrentToken() == JSONToken.FIELD_NAME) && (parser.getText() == 'definitionKey')) {
+                                parser.nextToken();
+                                resultJson.writeStartObject(); // {
+                                key = parser.getText();
+                                resultJson.writeStringField('key', key);
+                                name = getJourneyName(parser.getText());
+                                resultJson.writeStringField('name', name);
+                            }
+                            if ((parser.getCurrentToken() == JSONToken.FIELD_NAME) && (parser.getText() == 'version')) {
+                                parser.nextToken();
+                                version = parser.getIntegerValue();
+                                resultJson.writeNumberField('version', version);
+                                resultJson.writeBooleanField('exitingFromJourney', getExitStatus(key, userId, version));
+                                resultJson.writeEndObject(); // }
+                            }
                         }
                     }
                 }
             }
+            
+            // TODO Fix this so we merge all the data into a single result Json
+            resultJson.writeEndArray(); // ]
+            return resultJson.getAsString();
         }
-        
-        resultJson.writeEndArray(); // ]
-        return resultJson.getAsString();
     }
     
     @AuraEnabled
